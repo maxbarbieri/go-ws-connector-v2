@@ -20,8 +20,8 @@ func (rr *RequestReader) GetRawRequestMessage() json.RawMessage {
 	return rr.rawReqMsg
 }
 
-func GetTypedRequestMessage[RequestType any, ErrorType error](rr *RequestReader) (*Message[*RequestType, ErrorType], error) {
-	var obj Message[*RequestType, ErrorType]
+func GetTypedRequestMessage[RequestType any, ErrorType error](rr *RequestReader) (*Message[RequestType, ErrorType], error) {
+	var obj Message[RequestType, ErrorType]
 	err := jsoniter.ConfigFastest.Unmarshal(rr.rawReqMsg, &obj)
 	if err != nil {
 		return nil, fmt.Errorf("error in jsoniter.Unmarshal(rr.rawReqMsg, &obj): %s", err)
@@ -65,7 +65,7 @@ func (srr *SubscriptionRequestReader) GetRawSubscriptionRequestChannel() (chan j
 	return srr.rawSubscriptionRequestDataChan, nil
 }
 
-func GetTypedSubscriptionRequestChannel[SubscriptionRequestType any, ErrorType error](srr *SubscriptionRequestReader) (chan *Message[*SubscriptionRequestType, ErrorType], error) {
+func GetTypedSubscriptionRequestChannel[SubscriptionRequestType any, ErrorType error](srr *SubscriptionRequestReader) (chan *Message[SubscriptionRequestType, ErrorType], error) {
 	//use locks to avoid concurrent access to the SubscriptionRequestReader
 	srr.lock.Lock()
 	defer srr.lock.Unlock()
@@ -77,20 +77,20 @@ func GetTypedSubscriptionRequestChannel[SubscriptionRequestType any, ErrorType e
 	srr.channelRequested = true
 
 	//create typed subscription requests channel
-	typedChan := make(chan *Message[*SubscriptionRequestType, ErrorType], srr.typedSubscriptionRequestChanBufferSize)
+	typedChan := make(chan *Message[SubscriptionRequestType, ErrorType], srr.typedSubscriptionRequestChanBufferSize)
 
 	//create a goroutine that "translates" all incoming subscription requests
 	go func() {
 		for {
 			subReqMsg, chanOpen := <-srr.rawSubscriptionRequestDataChan
 			if chanOpen {
-				var msgObj Message[*SubscriptionRequestType, ErrorType]
+				var msgObj Message[SubscriptionRequestType, ErrorType]
 				err := jsoniter.ConfigFastest.Unmarshal(subReqMsg, &msgObj)
 				if err == nil { //no error
 					typedChan <- &msgObj
 
 				} else { //error
-					typedChan <- &Message[*SubscriptionRequestType, ErrorType]{
+					typedChan <- &Message[SubscriptionRequestType, ErrorType]{
 						Error: &Error[ErrorType]{
 							ErrorLevel:   ConnectorLevel,
 							ErrorMessage: fmt.Sprintf("error in jsoniter.Unmarshal(subReqMsg.Data, &msgObj): %s", err),
@@ -210,7 +210,7 @@ func GetTypedResponseOnChannel[ResponseType any, ErrorType error](rr *ResponseRe
 }
 
 // GetTypedResponseChannel DOES automatically close the returned channels after the response has been received
-func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseReader) (chan *Message[*ResponseType, ErrorType], error) {
+func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseReader) (chan *Message[ResponseType, ErrorType], error) {
 	//use locks to avoid concurrent access to the ResponseReader (from different goroutines calling GetTypedResponseChannel at the same time)
 	rr.lock.Lock()
 	defer rr.lock.Unlock()
@@ -222,20 +222,20 @@ func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseRead
 	rr.channelRequested = true
 
 	//create typed response channels
-	typedResponseChan := make(chan *Message[*ResponseType, ErrorType], 1)
+	typedResponseChan := make(chan *Message[ResponseType, ErrorType], 1)
 
 	//create a goroutine that "translates" the incoming responses
 	go func() {
 		for {
 			rawJsonResponse, chanOpen := <-rr.rawResponseChan
 			if chanOpen {
-				var msgObj Message[*ResponseType, ErrorType]
+				var msgObj Message[ResponseType, ErrorType]
 				err := jsoniter.ConfigFastest.Unmarshal(rawJsonResponse, &msgObj)
 				if err == nil { //no error
 					typedResponseChan <- &msgObj
 
 				} else { //error
-					typedResponseChan <- &Message[*ResponseType, ErrorType]{
+					typedResponseChan <- &Message[ResponseType, ErrorType]{
 						Error: &Error[ErrorType]{
 							ErrorLevel:   ConnectorLevel,
 							ErrorMessage: fmt.Sprintf("error in jsoniter.Unmarshal(rawJsonResponse, &msgObj): %s", err),
@@ -254,7 +254,7 @@ func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseRead
 }
 
 // GetTypedResponse blocks until the response is received
-func GetTypedResponse[ResponseType any, ErrorType error](rr *ResponseReader) (*Message[*ResponseType, ErrorType], error) {
+func GetTypedResponse[ResponseType any, ErrorType error](rr *ResponseReader) (*Message[ResponseType, ErrorType], error) {
 	typedRespChan, err := GetTypedResponseChannel[ResponseType, ErrorType](rr)
 	if err != nil {
 		return nil, fmt.Errorf("error in GetTypedResponseChannel[ResponseType, ErrorType](rr): %s", err)
@@ -306,7 +306,7 @@ func (sdr *SubscriptionDataReader) GetRawSubscriptionDataChannel() (chan json.Ra
 }
 
 // GetTypedSubscriptionDataOnChannel does NOT automatically close the channels passed as parameters when the subscription is closed.
-func GetTypedSubscriptionDataOnChannel[DataType any, ErrorType error](sdr *SubscriptionDataReader, typedDataChan chan *Message[*DataType, ErrorType]) error {
+func GetTypedSubscriptionDataOnChannel[DataType any, ErrorType error](sdr *SubscriptionDataReader, typedDataChan chan *Message[DataType, ErrorType]) error {
 	if typedDataChan == nil {
 		return fmt.Errorf("typedDataChan can't be nil")
 	}
@@ -336,13 +336,13 @@ func GetTypedSubscriptionDataOnChannel[DataType any, ErrorType error](sdr *Subsc
 		for {
 			rawJsonData, chanOpen = <-sdr.rawDataChan
 			if chanOpen {
-				var msgObj Message[*DataType, ErrorType]
+				var msgObj Message[DataType, ErrorType]
 				err := jsoniter.ConfigFastest.Unmarshal(rawJsonData, &msgObj)
 				if err == nil { //no error
 					typedDataChan <- &msgObj
 
 				} else { //error
-					typedDataChan <- &Message[*DataType, ErrorType]{
+					typedDataChan <- &Message[DataType, ErrorType]{
 						Error: &Error[ErrorType]{
 							ErrorLevel:   ConnectorLevel,
 							ErrorMessage: fmt.Sprintf("error in jsoniter.Unmarshal(rawJsonData, &msgObj): %s", err),
@@ -360,7 +360,7 @@ func GetTypedSubscriptionDataOnChannel[DataType any, ErrorType error](sdr *Subsc
 }
 
 // GetTypedSubscriptionDataChannel DOES automatically close the returned channel when the subscription is closed.
-func GetTypedSubscriptionDataChannel[DataType any, ErrorType error](sdr *SubscriptionDataReader) (chan *Message[*DataType, ErrorType], error) {
+func GetTypedSubscriptionDataChannel[DataType any, ErrorType error](sdr *SubscriptionDataReader) (chan *Message[DataType, ErrorType], error) {
 	//use locks to avoid concurrent access to the SubscriptionDataReader (from different goroutines calling GetTypedResponseChannel at the same time)
 	sdr.lock.Lock()
 	defer sdr.lock.Unlock()
@@ -372,20 +372,20 @@ func GetTypedSubscriptionDataChannel[DataType any, ErrorType error](sdr *Subscri
 	sdr.channelRequested = true
 
 	//create typed data channels
-	typedDataChan := make(chan *Message[*DataType, ErrorType], sdr.typedDataChanBufferSize)
+	typedDataChan := make(chan *Message[DataType, ErrorType], sdr.typedDataChanBufferSize)
 
 	//create a goroutine that "translates" all incoming data
 	go func() {
 		for {
 			rawJsonData, chanOpen := <-sdr.rawDataChan
 			if chanOpen {
-				var msgObj Message[*DataType, ErrorType]
+				var msgObj Message[DataType, ErrorType]
 				err := jsoniter.ConfigFastest.Unmarshal(rawJsonData, &msgObj)
 				if err == nil { //no error
 					typedDataChan <- &msgObj
 
 				} else { //error
-					typedDataChan <- &Message[*DataType, ErrorType]{
+					typedDataChan <- &Message[DataType, ErrorType]{
 						Error: &Error[ErrorType]{
 							ErrorLevel:   ConnectorLevel,
 							ErrorMessage: fmt.Sprintf("error in jsoniter.Unmarshal(rawJsonData, &msgObj): %s", err),

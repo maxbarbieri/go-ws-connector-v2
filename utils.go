@@ -93,12 +93,12 @@ type subscriptionInfo struct {
 // typed response channels, all in one call.
 // This function sends only requests that require a response, for Fire&Forget requests
 // please use the connector's SendRequest method directly.
-func SendRequest[ResponseType any, ErrorType error](conn Connector, method string, data interface{}) (chan *Message[*ResponseType, ErrorType], error) {
+func SendRequest[ResponseType any, ErrorType error](conn Connector, method string, data interface{}) (chan *Message[ResponseType, ErrorType], error) {
 	responseReader, err := conn.SendRequest(method, data, true)
 	if err != nil {
 		return nil, err
 	}
-	var typedResponseChan chan *Message[*ResponseType, ErrorType]
+	var typedResponseChan chan *Message[ResponseType, ErrorType]
 	typedResponseChan, err = GetTypedResponseChannel[ResponseType, ErrorType](responseReader)
 	if err != nil {
 		return nil, err

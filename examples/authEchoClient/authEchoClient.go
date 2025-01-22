@@ -42,7 +42,7 @@ func withAuthentication(clientWsConn wsconnector.ClientConnector) {
 	}
 
 	var authResp *wsconnector.Message[*AuthResponse, error]
-	authResp, err = wsconnector.GetTypedResponse[AuthResponse, error](authRespReader)
+	authResp, err = wsconnector.GetTypedResponse[*AuthResponse, error](authRespReader)
 	if err != nil {
 		log.Panicf("Failed to get auth response: %s\n", err)
 	}
@@ -60,7 +60,7 @@ func withAuthentication(clientWsConn wsconnector.ClientConnector) {
 	}
 
 	var echoResp *wsconnector.Message[*EchoMsg, error]
-	echoResp, err = wsconnector.GetTypedResponse[EchoMsg, error](echoRespReader)
+	echoResp, err = wsconnector.GetTypedResponse[*EchoMsg, error](echoRespReader)
 	if err != nil {
 		log.Panicf("Failed to get echo response: %s\n", err)
 	}
@@ -81,7 +81,7 @@ func withoutAuthentication(clientWsConn wsconnector.ClientConnector) {
 	}
 
 	var echoResp *wsconnector.Message[*EchoMsg, error]
-	echoResp, err = wsconnector.GetTypedResponse[EchoMsg, error](echoRespReader)
+	echoResp, err = wsconnector.GetTypedResponse[*EchoMsg, error](echoRespReader)
 	if err != nil {
 		log.Panicf("Failed to get echo response: %s\n", err)
 	}
