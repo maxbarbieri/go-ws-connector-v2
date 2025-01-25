@@ -73,6 +73,9 @@ type ClientConnector interface {
 
 	// Close closes the connector and the underlying websocket connection
 	Close()
+
+	// GetLogTag returns the connector's log tag
+	GetLogTag() string
 }
 
 type ServerConnector interface {
@@ -123,6 +126,9 @@ type ServerConnector interface {
 
 	// Close closes the connector and the underlying websocket connection
 	Close()
+
+	// GetLogTag returns the connector's log tag
+	GetLogTag() string
 }
 
 // Connector generic connector interface, which has all the methods of the ServerConnector, which
@@ -888,6 +894,11 @@ func (wsc *websocketConnector) Close() {
 	if wsc.wsConn != nil {
 		_ = wsc.wsConn.Close()
 	}
+}
+
+// GetLogTag returns the connector's log tag
+func (wsc *websocketConnector) GetLogTag() string {
+	return wsc.logTag
 }
 
 func (wsc *websocketConnector) reset() {
