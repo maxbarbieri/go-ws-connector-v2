@@ -254,13 +254,18 @@ func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseRead
 }
 
 // GetTypedResponse blocks until the response is received
-func GetTypedResponse[ResponseType any, ErrorType error](rr *ResponseReader) (*Message[ResponseType, ErrorType], error) {
+func GetTypedResponse[ResponseType any, ErrorType error](rr *ResponseReader) *Message[ResponseType, ErrorType] {
 	typedRespChan, err := GetTypedResponseChannel[ResponseType, ErrorType](rr)
 	if err != nil {
-		return nil, fmt.Errorf("error in GetTypedResponseChannel[ResponseType, ErrorType](rr): %s", err)
+		return &Message[ResponseType, ErrorType]{
+			Error: &Error[ErrorType]{
+				ErrorLevel:   ConnectorLevel,
+				ErrorMessage: fmt.Sprintf("error in GetTypedResponseChannel[ResponseType, ErrorType](rr): %s", err),
+			},
+		}
 	}
 
-	return <-typedRespChan, nil
+	return <-typedRespChan
 }
 
 /*
