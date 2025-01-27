@@ -12,19 +12,6 @@ const (
 	unsubscriptionRequest
 )
 
-type ErrorLevel string
-
-const (
-	ConnectorLevel   ErrorLevel = "ConnectorLevel"
-	ApplicationLevel ErrorLevel = "ApplicationLevel"
-)
-
-type Error[ErrorType error] struct {
-	ErrorLevel   ErrorLevel `json:"err_level"`
-	ErrorMessage string     `json:"err_msg"`
-	ErrorInfo    ErrorType  `json:"err_info,omitempty"` // ErrorInfo may also be nil or a zero value, please check before using to avoid nil pointer dereference errors.
-}
-
 type Message[DataType any, ErrorType error] struct {
 	Data  DataType          `json:"data,omitempty"`
 	Error *Error[ErrorType] `json:"error,omitempty"`
