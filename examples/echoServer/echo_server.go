@@ -19,16 +19,16 @@ type EchoMsg struct {
 }
 
 func wsEchoHandler(responder wsconnector.Responder, reqReader *wsconnector.RequestReader) {
-	reqData, err := wsconnector.GetTypedRequestMessage[EchoMsg, error](reqReader)
-	if err != nil {
-		log.Warningf("Error in wsconnector.GetTypedRequestMessage[EchoMsg, error](reqReader): %s\n", err)
-		_ = responder.SendResponse(nil, err)
+	reqMsg := wsconnector.GetTypedRequestMessage[*EchoMsg, *wsconnector.ErrorMessage](reqReader)
+	if reqMsg.Error != nil {
+		log.Warningf("Error in wsconnector.GetTypedRequestMessage[*EchoMsg, *wsconnector.ErrorMessage](reqReader): %s %s\n", reqMsg.Error.ErrorLevel, reqMsg.Error.ErrorMessage)
+		_ = responder.SendResponse(nil, wsconnector.NewErrorMessage("couldn't get typed request message: %s %s", reqMsg.Error.ErrorLevel, reqMsg.Error.ErrorMessage))
 		return
 	}
 
-	err = responder.SendResponse(reqData, nil)
+	err := responder.SendResponse(reqMsg.Data, nil)
 	if err != nil {
-		log.Warningf("Error in responder.SendResponse(reqData, nil): %s\n", err)
+		log.Warningf("Error in responder.SendResponse(reqMsg.Data, nil): %s\n", err)
 	}
 }
 

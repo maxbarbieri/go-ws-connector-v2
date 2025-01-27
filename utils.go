@@ -7,26 +7,40 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type ErrorMessage struct {
+	Err string `json:"err"`
+}
+
+func (em *ErrorMessage) Error() string {
+	return em.Err
+}
+
+func NewErrorMessage(format string, a ...any) *ErrorMessage {
+	return &ErrorMessage{
+		Err: fmt.Sprintf(format, a...),
+	}
+}
+
 var (
 	/*
 		Errors that may only be returned from Connector methods.
 	*/
 
-	ATTEMPT_TO_SEND_NIL_ERROR                           = fmt.Errorf("attempt to send nil data")
-	ATTEMPT_TO_RESPOND_TO_FIRE_AND_FORGET_REQUEST_ERROR = fmt.Errorf("attempt to respond to a fire&forget request")
-	ATTEMPT_TO_SEND_MULTIPLE_RESPONSES_TO_REQUEST_ERROR = fmt.Errorf("attempt to send multiple responses to a request")
-	RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR            = fmt.Errorf("response channel already requested for this ResponseReader")
-	REQUEST_CHANNEL_ALREADY_REQUESTED_ERROR             = fmt.Errorf("request channel already requested for this SubscriptionRequestReader")
-	DATA_CHANNEL_ALREADY_REQUESTED_ERROR                = fmt.Errorf("data channel already requested for this SubscriptionDataReader")
+	ATTEMPT_TO_SEND_NIL_ERROR                           = NewErrorMessage("attempt to send nil data")
+	ATTEMPT_TO_RESPOND_TO_FIRE_AND_FORGET_REQUEST_ERROR = NewErrorMessage("attempt to respond to a fire&forget request")
+	ATTEMPT_TO_SEND_MULTIPLE_RESPONSES_TO_REQUEST_ERROR = NewErrorMessage("attempt to send multiple responses to a request")
+	RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR            = NewErrorMessage("response channel already requested for this ResponseReader")
+	REQUEST_CHANNEL_ALREADY_REQUESTED_ERROR             = NewErrorMessage("request channel already requested for this SubscriptionRequestReader")
+	DATA_CHANNEL_ALREADY_REQUESTED_ERROR                = NewErrorMessage("data channel already requested for this SubscriptionDataReader")
 
 	/*
 		Errors that may also be sent on the websocket connection.
 	*/
 
-	UNKNOWN_METHOD_ERROR     = fmt.Errorf("unknown method")
-	UNKNOWN_TOPIC_ERROR      = fmt.Errorf("unknown topic")
-	WS_CONNECTION_DOWN_ERROR = fmt.Errorf("ws connection down")
-	DUPLICATE_REQ_ID_ERROR   = fmt.Errorf("duplicate req id (wait for previous request with this id to be completed before reusing the id)")
+	UNKNOWN_METHOD_ERROR     = NewErrorMessage("unknown method")
+	UNKNOWN_TOPIC_ERROR      = NewErrorMessage("unknown topic")
+	WS_CONNECTION_DOWN_ERROR = NewErrorMessage("ws connection down")
+	DUPLICATE_REQ_ID_ERROR   = NewErrorMessage("duplicate req id (wait for previous request with this id to be completed before reusing the id)")
 
 	UNKNOWN_METHOD_ERROR_MESSAGE = &Message[interface{}, error]{Error: &Error[error]{
 		ErrorLevel:   ConnectorLevel,
@@ -89,8 +103,8 @@ type subscriptionInfo struct {
 	sender                    *wsSender
 }
 
-// SendRequest function that wraps the SendRequest method of a connector + the request of
-// typed response channels, all in one call.
+// SendRequest function that wraps the SendRequest method of a connector + the request of the
+// typed response channel, all in one call.
 // This function sends only requests that require a response, for Fire&Forget requests
 // please use the connector's SendRequest method directly.
 func SendRequest[ResponseType any, ErrorType error](conn Connector, method string, data interface{}) (chan *Message[ResponseType, ErrorType], error) {
@@ -99,9 +113,6 @@ func SendRequest[ResponseType any, ErrorType error](conn Connector, method strin
 		return nil, err
 	}
 	var typedResponseChan chan *Message[ResponseType, ErrorType]
-	typedResponseChan, err = GetTypedResponseChannel[ResponseType, ErrorType](responseReader)
-	if err != nil {
-		return nil, err
-	}
+	typedResponseChan = GetTypedResponseChannel[ResponseType, ErrorType](responseReader)
 	return typedResponseChan, nil
 }

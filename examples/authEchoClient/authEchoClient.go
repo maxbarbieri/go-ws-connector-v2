@@ -17,6 +17,14 @@ type AuthResponse struct {
 	Success bool `json:"success"`
 }
 
+type AuthError struct {
+	Success bool `json:"success"`
+}
+
+func (authRespErr *AuthError) Error() string {
+	return "Failed authentication"
+}
+
 func main() {
 	url := "ws://localhost:3000/wsc"
 
@@ -41,10 +49,9 @@ func withAuthentication(clientWsConn wsconnector.ClientConnector) {
 		log.Panicf("Failed to send auth request: %s\n", err)
 	}
 
-	var authResp *wsconnector.Message[*AuthResponse, error]
-	authResp, err = wsconnector.GetTypedResponse[*AuthResponse, error](authRespReader)
-	if err != nil {
-		log.Panicf("Failed to get auth response: %s\n", err)
+	authResp := wsconnector.GetTypedResponse[*AuthResponse, *AuthError](authRespReader)
+	if authResp.Error != nil {
+		log.Panicf("Failed to get auth response: %s %s\n", authResp.Error.ErrorLevel, authResp.Error.ErrorMessage)
 	}
 
 	log.Infof("Got auth response: %+v %+v\n", authResp.Data, authResp.Error)
@@ -59,10 +66,9 @@ func withAuthentication(clientWsConn wsconnector.ClientConnector) {
 		log.Panicf("Failed to send echo request: %s\n", err)
 	}
 
-	var echoResp *wsconnector.Message[*EchoMsg, error]
-	echoResp, err = wsconnector.GetTypedResponse[*EchoMsg, error](echoRespReader)
-	if err != nil {
-		log.Panicf("Failed to get echo response: %s\n", err)
+	echoResp := wsconnector.GetTypedResponse[*EchoMsg, *wsconnector.ErrorMessage](echoRespReader)
+	if echoResp.Error != nil {
+		log.Panicf("Failed to get echo response: %s %s\n", echoResp.Error.ErrorLevel, echoResp.Error.ErrorMessage)
 	}
 
 	log.Infof("Got echo response: %+v %+v\n", echoResp.Data, echoResp.Error)
@@ -80,10 +86,9 @@ func withoutAuthentication(clientWsConn wsconnector.ClientConnector) {
 		log.Panicf("Failed to send echo request: %s\n", err)
 	}
 
-	var echoResp *wsconnector.Message[*EchoMsg, error]
-	echoResp, err = wsconnector.GetTypedResponse[*EchoMsg, error](echoRespReader)
-	if err != nil {
-		log.Panicf("Failed to get echo response: %s\n", err)
+	echoResp := wsconnector.GetTypedResponse[*EchoMsg, *wsconnector.ErrorMessage](echoRespReader)
+	if echoResp.Error != nil {
+		log.Panicf("Failed to get echo response: %s %s\n", echoResp.Error.ErrorLevel, echoResp.Error.ErrorMessage)
 	}
 
 	log.Infof("Got echo response: %+v\n", echoResp)

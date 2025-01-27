@@ -20,13 +20,18 @@ func (rr *RequestReader) GetRawRequestMessage() json.RawMessage {
 	return rr.rawReqMsg
 }
 
-func GetTypedRequestMessage[RequestType any, ErrorType error](rr *RequestReader) (*Message[RequestType, ErrorType], error) {
+func GetTypedRequestMessage[RequestType any, ErrorType error](rr *RequestReader) *Message[RequestType, ErrorType] {
 	var obj Message[RequestType, ErrorType]
 	err := jsoniter.ConfigFastest.Unmarshal(rr.rawReqMsg, &obj)
 	if err != nil {
-		return nil, fmt.Errorf("error in jsoniter.Unmarshal(rr.rawReqMsg, &obj): %s", err)
+		return &Message[RequestType, ErrorType]{
+			Error: &Error[ErrorType]{
+				ErrorLevel:   ConnectorLevel,
+				ErrorMessage: fmt.Sprintf("error in jsoniter.Unmarshal(rr.rawReqMsg, &obj): %s", err),
+			},
+		}
 	}
-	return &obj, nil
+	return &obj
 }
 
 /*
@@ -157,17 +162,23 @@ func (rr *ResponseReader) GetRawResponse() (json.RawMessage, error) {
 }
 
 // GetTypedResponseOnChannel does NOT automatically close the channel passed as parameters after the response has been received.
-func GetTypedResponseOnChannel[ResponseType any, ErrorType error](rr *ResponseReader, typedResponseChan chan *Message[*ResponseType, ErrorType]) error {
+func GetTypedResponseOnChannel[ResponseType any, ErrorType error](rr *ResponseReader, typedResponseChan chan *Message[ResponseType, ErrorType]) {
 	if typedResponseChan == nil {
-		return fmt.Errorf("typedResponseChan can't be nil")
+		return
 	}
 
 	//use locks to avoid concurrent access to the ResponseReader (from different goroutines calling GetTypedResponseChannel at the same time)
 	rr.lock.Lock()
 	defer rr.lock.Unlock()
 
-	if rr.channelRequested { //if channels for this reader have already been requested
-		return RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR
+	if rr.channelRequested { //if channel for this reader have already been requested
+		typedResponseChan <- &Message[ResponseType, ErrorType]{
+			Error: &Error[ErrorType]{
+				ErrorLevel:   ConnectorLevel,
+				ErrorMessage: RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR.Error(),
+			},
+		}
+		return
 	}
 
 	rr.channelRequested = true
@@ -187,12 +198,12 @@ func GetTypedResponseOnChannel[ResponseType any, ErrorType error](rr *ResponseRe
 		for {
 			rawJsonResponse, chanOpen = <-rr.rawResponseChan
 			if chanOpen {
-				var msgObj Message[*ResponseType, ErrorType]
+				var msgObj Message[ResponseType, ErrorType]
 				err := jsoniter.ConfigFastest.Unmarshal(rawJsonResponse, &msgObj)
 				if err == nil { //no error
 					typedResponseChan <- &msgObj
 				} else { //error
-					typedResponseChan <- &Message[*ResponseType, ErrorType]{
+					typedResponseChan <- &Message[ResponseType, ErrorType]{
 						Error: &Error[ErrorType]{
 							ErrorLevel:   ConnectorLevel,
 							ErrorMessage: fmt.Sprintf("error in jsoniter.Unmarshal(rawJsonResponse, &msgObj): %s", err),
@@ -205,24 +216,28 @@ func GetTypedResponseOnChannel[ResponseType any, ErrorType error](rr *ResponseRe
 			}
 		}
 	}()
-
-	return nil
 }
 
 // GetTypedResponseChannel DOES automatically close the returned channels after the response has been received
-func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseReader) (chan *Message[ResponseType, ErrorType], error) {
+func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseReader) chan *Message[ResponseType, ErrorType] {
 	//use locks to avoid concurrent access to the ResponseReader (from different goroutines calling GetTypedResponseChannel at the same time)
 	rr.lock.Lock()
 	defer rr.lock.Unlock()
 
+	//create typed response channel
+	typedResponseChan := make(chan *Message[ResponseType, ErrorType], 1)
+
 	if rr.channelRequested { //if channels for this reader have already been requested
-		return nil, RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR
+		typedResponseChan <- &Message[ResponseType, ErrorType]{
+			Error: &Error[ErrorType]{
+				ErrorLevel:   ConnectorLevel,
+				ErrorMessage: RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR.Error(),
+			},
+		}
+		return typedResponseChan
 	}
 
 	rr.channelRequested = true
-
-	//create typed response channels
-	typedResponseChan := make(chan *Message[ResponseType, ErrorType], 1)
 
 	//create a goroutine that "translates" the incoming responses
 	go func() {
@@ -250,22 +265,12 @@ func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseRead
 		}
 	}()
 
-	return typedResponseChan, nil
+	return typedResponseChan
 }
 
 // GetTypedResponse blocks until the response is received
 func GetTypedResponse[ResponseType any, ErrorType error](rr *ResponseReader) *Message[ResponseType, ErrorType] {
-	typedRespChan, err := GetTypedResponseChannel[ResponseType, ErrorType](rr)
-	if err != nil {
-		return &Message[ResponseType, ErrorType]{
-			Error: &Error[ErrorType]{
-				ErrorLevel:   ConnectorLevel,
-				ErrorMessage: fmt.Sprintf("error in GetTypedResponseChannel[ResponseType, ErrorType](rr): %s", err),
-			},
-		}
-	}
-
-	return <-typedRespChan
+	return <-GetTypedResponseChannel[ResponseType, ErrorType](rr)
 }
 
 /*

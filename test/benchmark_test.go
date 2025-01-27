@@ -45,7 +45,7 @@ func Benchmark_WsConnector_Echo_Json(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		resReader, _ = wsc.SendRequest("echo", echoMsg, true)
 		resChan := make(chan *wsconnector.Message[*EchoMsg, error], 1)
-		_ = wsconnector.GetTypedResponseOnChannel[EchoMsg, error](resReader, resChan)
+		wsconnector.GetTypedResponseOnChannel[*EchoMsg, error](resReader, resChan)
 		<-resChan
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gorilla/websocket"
 	wsconnector "github.com/maxbarbieri/go-ws-connector-v2"
 	log "github.com/sirupsen/logrus"
@@ -26,31 +27,31 @@ type AuthResponse struct {
 	Success bool `json:"success"`
 }
 
-type AuthResponseError struct {
+type AuthError struct {
 	Success bool `json:"success"`
 }
 
-func (authRespErr *AuthResponseError) Error() string {
+func (authRespErr *AuthError) Error() string {
 	return "Failed authentication"
 }
 
 func wsEchoHandler(responder wsconnector.Responder, reqReader *wsconnector.RequestReader) {
-	reqMsg, err := wsconnector.GetTypedRequestMessage[EchoMsg, error](reqReader)
-	if err != nil {
-		log.Warningf("Error in wsconnector.GetTypedRequestMessage[EchoMsg, error](reqReader): %s\n", err)
-		_ = responder.SendResponse(nil, err)
+	reqMsg := wsconnector.GetTypedRequestMessage[*EchoMsg, *wsconnector.ErrorMessage](reqReader)
+	if reqMsg.Error != nil {
+		log.Warningf("Error in wsconnector.GetTypedRequestMessage[*EchoMsg, *wsconnector.ErrorMessage](reqReader): %s %s\n", reqMsg.Error.ErrorLevel, reqMsg.Error.ErrorMessage)
+		_ = responder.SendResponse(nil, fmt.Errorf("couldn't get typed request message: %s %s", reqMsg.Error.ErrorLevel, reqMsg.Error.ErrorMessage))
 		return
 	}
 
-	err = responder.SendResponse(reqMsg.Data, nil)
+	err := responder.SendResponse(reqMsg.Data, nil)
 	if err != nil {
 		log.Warningf("Error in responder.SendResponse(reqMsg.Data, nil): %s\n", err)
 	}
 }
 
 func checkAuth(reqReader *wsconnector.RequestReader) bool {
-	authMsg, err := wsconnector.GetTypedRequestMessage[AuthRequest, error](reqReader)
-	if err != nil {
+	authMsg := wsconnector.GetTypedRequestMessage[*AuthRequest, *AuthError](reqReader)
+	if authMsg.Error != nil {
 		return false
 	}
 
@@ -71,9 +72,6 @@ func wsAuthHandler(authenticatedChan chan bool) func(wsconnector.Responder, *wsc
 		//check authentication
 		authSuccess := checkAuth(requestReader)
 
-		//notify authentication outcome on channel
-		authenticatedChan <- authSuccess
-
 		//send authentication response / error
 		if authSuccess {
 			log.Infof("Successful authentication")
@@ -83,11 +81,14 @@ func wsAuthHandler(authenticatedChan chan bool) func(wsconnector.Responder, *wsc
 			}
 
 		} else {
-			err := responder.SendResponse(nil, &AuthResponseError{})
+			err := responder.SendResponse(nil, &AuthError{Success: false})
 			if err != nil {
-				log.Warningf("[wsAuthHandler] Error in responder.SendResponse(nil, &AuthResponseError{}): %s\n", err)
+				log.Warningf("[wsAuthHandler] Error in responder.SendResponse(nil, &AuthError{Success: false}): %s\n", err)
 			}
 		}
+
+		//notify authentication outcome on channel
+		authenticatedChan <- authSuccess
 	}
 }
 
