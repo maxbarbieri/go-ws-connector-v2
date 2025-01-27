@@ -25,11 +25,11 @@ type wsResponder struct {
 
 func (r *wsResponder) SendResponse(data interface{}, err error) error {
 	if r.reqId == 0 {
-		return ATTEMPT_TO_RESPOND_TO_FIRE_AND_FORGET_REQUEST_ERROR
+		return AttemptToRespondToFireAndForgetRequestError
 	}
 
 	if data == nil && err == nil { //if both data and error are nil
-		return ATTEMPT_TO_SEND_NIL_ERROR
+		return AttemptToSendNilError
 	}
 
 	//build the message object
@@ -66,11 +66,11 @@ func (r *wsResponder) SendResponse(data interface{}, err error) error {
 			return nil
 
 		} else { //if the connection is not active
-			return WS_CONNECTION_DOWN_ERROR
+			return WsConnectionDownError
 		}
 
 	} else { //if the responder is disabled
-		return ATTEMPT_TO_SEND_MULTIPLE_RESPONSES_TO_REQUEST_ERROR
+		return AttemptToSendMultipleResponsesToRequestError
 	}
 }
 

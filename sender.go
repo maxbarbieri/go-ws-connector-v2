@@ -32,7 +32,7 @@ type wsSender struct {
 func (s *wsSender) Send(data interface{}, err error, last bool) error {
 	//allow sending a nil payload only if this is the last message (i.e.: if we want to close the subscription)
 	if data == nil && err == nil && !last {
-		return ATTEMPT_TO_SEND_NIL_ERROR
+		return AttemptToSendNilError
 	}
 
 	//build the message object
@@ -73,7 +73,7 @@ func (s *wsSender) Send(data interface{}, err error, last bool) error {
 		return nil
 
 	} else { //if the sender is disabled or the connection is not active
-		return WS_CONNECTION_DOWN_ERROR
+		return WsConnectionDownError
 	}
 }
 

@@ -62,7 +62,7 @@ func (srr *SubscriptionRequestReader) GetRawSubscriptionRequestChannel() (chan j
 	defer srr.lock.Unlock()
 
 	if srr.channelRequested { //if the channel for this reader have already been requested
-		return nil, REQUEST_CHANNEL_ALREADY_REQUESTED_ERROR
+		return nil, RequestChannelAlreadyRequestedError
 	}
 
 	srr.channelRequested = true
@@ -76,7 +76,7 @@ func GetTypedSubscriptionRequestChannel[SubscriptionRequestType any, ErrorType e
 	defer srr.lock.Unlock()
 
 	if srr.channelRequested { //if the channel for this reader have already been requested
-		return nil, REQUEST_CHANNEL_ALREADY_REQUESTED_ERROR
+		return nil, RequestChannelAlreadyRequestedError
 	}
 
 	srr.channelRequested = true
@@ -143,7 +143,7 @@ func (rr *ResponseReader) GetRawResponseChannel() (chan json.RawMessage, error) 
 	defer rr.lock.Unlock()
 
 	if rr.channelRequested { //if channels for this reader have already been requested
-		return nil, RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR
+		return nil, ResponseChannelAlreadyRequestedError
 	}
 
 	rr.channelRequested = true
@@ -175,7 +175,7 @@ func GetTypedResponseOnChannel[ResponseType any, ErrorType error](rr *ResponseRe
 		typedResponseChan <- &Message[ResponseType, ErrorType]{
 			Error: &Error[ErrorType]{
 				ErrorLevel:   ConnectorLevel,
-				ErrorMessage: RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR.Error(),
+				ErrorMessage: ResponseChannelAlreadyRequestedError.Error(),
 			},
 		}
 		return
@@ -231,7 +231,7 @@ func GetTypedResponseChannel[ResponseType any, ErrorType error](rr *ResponseRead
 		typedResponseChan <- &Message[ResponseType, ErrorType]{
 			Error: &Error[ErrorType]{
 				ErrorLevel:   ConnectorLevel,
-				ErrorMessage: RESPONSE_CHANNEL_ALREADY_REQUESTED_ERROR.Error(),
+				ErrorMessage: ResponseChannelAlreadyRequestedError.Error(),
 			},
 		}
 		return typedResponseChan
@@ -307,7 +307,7 @@ func (sdr *SubscriptionDataReader) GetRawSubscriptionDataChannel() (chan json.Ra
 	defer sdr.lock.Unlock()
 
 	if sdr.channelRequested { //if channels for this reader have already been requested
-		return nil, DATA_CHANNEL_ALREADY_REQUESTED_ERROR
+		return nil, DataChannelAlreadyRequestedError
 	}
 
 	sdr.channelRequested = true
@@ -326,7 +326,7 @@ func GetTypedSubscriptionDataOnChannel[DataType any, ErrorType error](sdr *Subsc
 	defer sdr.lock.Unlock()
 
 	if sdr.channelRequested { //if channels for this reader have already been requested
-		return DATA_CHANNEL_ALREADY_REQUESTED_ERROR
+		return DataChannelAlreadyRequestedError
 	}
 
 	sdr.channelRequested = true
@@ -376,7 +376,7 @@ func GetTypedSubscriptionDataChannel[DataType any, ErrorType error](sdr *Subscri
 	defer sdr.lock.Unlock()
 
 	if sdr.channelRequested { //if channels for this reader have already been requested
-		return nil, DATA_CHANNEL_ALREADY_REQUESTED_ERROR
+		return nil, DataChannelAlreadyRequestedError
 	}
 
 	sdr.channelRequested = true

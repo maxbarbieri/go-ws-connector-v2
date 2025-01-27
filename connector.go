@@ -364,7 +364,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 						Type:    response,
 						Id:      msg.Id,
 						Method:  msg.Method,
-						Message: DUPLICATE_REQ_ID_ERROR_MESSAGE,
+						Message: duplicateReqIdMessage,
 					}
 				}
 
@@ -407,7 +407,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 							Type:    response,
 							Id:      msg.Id,
 							Method:  msg.Method,
-							Message: UNKNOWN_METHOD_ERROR_MESSAGE,
+							Message: unknownMethodMessage,
 						}
 					}
 				}
@@ -467,7 +467,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 						Id:      msg.Id,
 						Method:  msg.Method,
 						Last:    true,
-						Message: UNKNOWN_TOPIC_ERROR_MESSAGE,
+						Message: unknownTopicMessage,
 					}
 				}
 			}
@@ -681,7 +681,7 @@ func (wsc *websocketConnector) SendRequest(method string, data interface{}, requ
 		}
 
 	} else { //if there is an ongoing reset procedure
-		return nil, WS_CONNECTION_DOWN_ERROR
+		return nil, WsConnectionDownError
 	}
 }
 
@@ -740,7 +740,7 @@ func (wsc *websocketConnector) subscribe(topic string, restoreSubscriptionOnReco
 		return subDataReader, nil
 
 	} else { //if there is an ongoing reset procedure
-		return nil, WS_CONNECTION_DOWN_ERROR
+		return nil, WsConnectionDownError
 	}
 }
 
@@ -774,7 +774,7 @@ func (wsc *websocketConnector) UpdateSubscription(subDataReader *SubscriptionDat
 		return nil
 
 	} else { //if there is an ongoing reset procedure
-		return WS_CONNECTION_DOWN_ERROR
+		return WsConnectionDownError
 	}
 }
 
@@ -801,7 +801,7 @@ func (wsc *websocketConnector) Unsubscribe(subDataReader *SubscriptionDataReader
 		return nil
 
 	} else { //if there is an ongoing reset procedure
-		return WS_CONNECTION_DOWN_ERROR
+		return WsConnectionDownError
 	}
 }
 
@@ -825,7 +825,7 @@ func (wsc *websocketConnector) UnsubscribeAll() error {
 		return nil
 
 	} else { //if there is an ongoing reset procedure
-		return WS_CONNECTION_DOWN_ERROR
+		return WsConnectionDownError
 	}
 }
 
@@ -1027,7 +1027,7 @@ func (wsc *websocketConnector) closeSendersRespondersAndReaders() {
 	//(we can close them because, now that the incomingMsgHandler goroutine is down, no one will send on those channels)
 	wsc.mapSentRequestIdToResponseReaderLock.Lock()
 	for sentReqId, responseReader := range wsc.mapSentRequestIdToResponseReader {
-		responseReader.rawResponseChan <- MARSHALED_WS_CONNECTION_DOWN_ERROR_MESSAGE
+		responseReader.rawResponseChan <- marshaledWsConnectionDownMessage
 		responseReader.closeChannel()
 		delete(wsc.mapSentRequestIdToResponseReader, sentReqId)
 	}
@@ -1038,7 +1038,7 @@ func (wsc *websocketConnector) closeSendersRespondersAndReaders() {
 	wsc.mapSentSubIdToSubDataReaderLock.Lock()
 	for subId, subDataReader := range wsc.mapSentSubIdToSubDataReader {
 		//send the connection down error to response readers of both standard and persistent subscriptions
-		subDataReader.rawDataChan <- MARSHALED_WS_CONNECTION_DOWN_ERROR_MESSAGE
+		subDataReader.rawDataChan <- marshaledWsConnectionDownMessage
 
 		//destroy standard subscriptions only if this is a reset procedure (but if the connector has been closed, destroy persistent subscriptions too)
 		if !subDataReader.persistent || wsc.closing {
@@ -1066,7 +1066,7 @@ func (wsc *websocketConnector) closeSendersRespondersAndReaders() {
 		subInfo.sender.disable()
 
 		//send the "connection down" error to the subscription request reader
-		subInfo.subscriptionRequestReader.rawSubscriptionRequestDataChan <- MARSHALED_WS_CONNECTION_DOWN_ERROR_MESSAGE
+		subInfo.subscriptionRequestReader.rawSubscriptionRequestDataChan <- marshaledWsConnectionDownMessage
 
 		//remove the subscription info object from the map (and close its channels)
 		wsc.removeSubscriptionRequestInfo(receivedSubId, false) //do not take the mapReceivedSubIdToSubscriptionInfoLock here, since we already locked it outside this for loop
