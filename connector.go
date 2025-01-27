@@ -716,7 +716,7 @@ func (wsc *websocketConnector) subscribe(topic string, restoreSubscriptionOnReco
 		//register subscription data reader
 		subDataReader := &SubscriptionDataReader{
 			subId:                   subId,
-			connectorLogTag:         wsc.logTag,
+			wsConnector:             wsc,
 			topic:                   topic,
 			rawDataChan:             make(chan json.RawMessage, wsc.responseChanBufferSize),
 			typedDataChanBufferSize: wsc.responseChanBufferSize,

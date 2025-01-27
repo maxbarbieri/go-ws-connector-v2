@@ -279,7 +279,7 @@ func GetTypedResponse[ResponseType any, ErrorType error](rr *ResponseReader) *Me
 
 type SubscriptionDataReader struct {
 	subId                      uint64
-	connectorLogTag            string
+	wsConnector                *websocketConnector
 	topic                      string
 	lastSubscriptionRequestMsg *Message[interface{}, error]
 	persistent                 bool
@@ -337,7 +337,7 @@ func GetTypedSubscriptionDataOnChannel[DataType any, ErrorType error](sdr *Subsc
 		//avoid crashing the entire process if the specified channels are closed when writing to it
 		defer func() {
 			if r := recover(); r != nil {
-				log.Warningf("[%s][GetTypedSubscriptionDataOnChannel] recovered from panic: %+v\n", sdr.connectorLogTag, r)
+				log.Warningf("[%s][GetTypedSubscriptionDataOnChannel] recovered from panic: %+v\n", sdr.wsConnector.logTag, r)
 			}
 		}()
 
@@ -411,4 +411,9 @@ func GetTypedSubscriptionDataChannel[DataType any, ErrorType error](sdr *Subscri
 	}()
 
 	return typedDataChan, nil
+}
+
+// Unsubscribe unsubscribes the associated subscription
+func (sdr *SubscriptionDataReader) Unsubscribe() error {
+	return sdr.wsConnector.Unsubscribe(sdr)
 }
