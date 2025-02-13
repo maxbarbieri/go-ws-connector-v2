@@ -413,7 +413,12 @@ func GetTypedSubscriptionDataChannel[DataType any, ErrorType error](sdr *Subscri
 	return typedDataChan, nil
 }
 
-// Unsubscribe unsubscribes the associated subscription
+// Unsubscribe unsubscribes the associated subscription, alias for the Connector's Unsubscribe method.
 func (sdr *SubscriptionDataReader) Unsubscribe() error {
 	return sdr.wsConnector.Unsubscribe(sdr)
+}
+
+// UpdateSubscription updates the associated subscription, alias for the Connector's UpdateSubscription method.
+func (sdr *SubscriptionDataReader) UpdateSubscription(data interface{}) error {
+	return sdr.wsConnector.UpdateSubscription(sdr, data)
 }
