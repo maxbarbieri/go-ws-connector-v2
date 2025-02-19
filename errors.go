@@ -3,7 +3,6 @@ package ws_connector
 import (
 	"encoding/json"
 	"fmt"
-	jsoniter "github.com/json-iterator/go"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -97,22 +96,22 @@ var (
 func init() {
 	var err error
 
-	marshaledUnknownMethodMessage, err = jsoniter.ConfigFastest.Marshal(unknownMethodMessage)
+	marshaledUnknownMethodMessage, err = JsoniterConfig.Marshal(unknownMethodMessage)
 	if err != nil {
 		log.Panicf("Error marshaling WsConnector internal error %s\n", UnknownMethodError)
 	}
 
-	marshaledUnknownTopicMessage, err = jsoniter.ConfigFastest.Marshal(unknownTopicMessage)
+	marshaledUnknownTopicMessage, err = JsoniterConfig.Marshal(unknownTopicMessage)
 	if err != nil {
 		log.Panicf("Error marshaling WsConnector internal error %s\n", UnknownTopicError)
 	}
 
-	marshaledWsConnectionDownMessage, err = jsoniter.ConfigFastest.Marshal(wsConnectionDownMessage)
+	marshaledWsConnectionDownMessage, err = JsoniterConfig.Marshal(wsConnectionDownMessage)
 	if err != nil {
 		log.Panicf("Error marshaling WsConnector internal error %s\n", WsConnectionDownError)
 	}
 
-	marshaledDuplicateReqIdMessage, err = jsoniter.ConfigFastest.Marshal(duplicateReqIdMessage)
+	marshaledDuplicateReqIdMessage, err = JsoniterConfig.Marshal(duplicateReqIdMessage)
 	if err != nil {
 		log.Panicf("Error marshaling WsConnector internal error %s\n", DuplicateReqIdError)
 	}

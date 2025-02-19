@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+// JsoniterConfig is a global jsoniter config which is like jsoniter.ConfigFastest but marshals float64 values without
+// truncating them to 6 decimal digits.
+var JsoniterConfig = jsoniter.Config{
+	EscapeHTML:                    false,
+	ObjectFieldMustBeSimpleString: true,
+}.Froze()
+
 type EchoMsg struct {
 	Msg0     string            `json:"msg0"`
 	Msg1     string            `json:"msg1"`
@@ -57,7 +64,7 @@ func Benchmark_WsConnection_Echo_Json(b *testing.B) {
 	var readMsgBytes []byte
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		writeMsgBytes, _ = jsoniter.ConfigFastest.Marshal(&echoMsg)
+		writeMsgBytes, _ = JsoniterConfig.Marshal(&echoMsg)
 		_ = wsConn.WriteMessage(websocket.TextMessage, writeMsgBytes)
 		_, readMsgBytes, _ = wsConn.ReadMessage()
 		var readMsg EchoMsg
@@ -71,7 +78,7 @@ func Benchmark_WsConnection_Echo_Raw(b *testing.B) {
 	var msgBytes []byte
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		msgBytes, _ = jsoniter.ConfigFastest.Marshal(&echoMsg)
+		msgBytes, _ = JsoniterConfig.Marshal(&echoMsg)
 		_ = wsConn.WriteMessage(websocket.TextMessage, msgBytes)
 		_, msgBytes, _ = wsConn.ReadMessage()
 	}

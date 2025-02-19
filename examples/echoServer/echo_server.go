@@ -8,6 +8,13 @@ import (
 	"net/http"
 )
 
+// JsoniterConfig is a global jsoniter config which is like jsoniter.ConfigFastest but marshals float64 values without
+// truncating them to 6 decimal digits.
+var JsoniterConfig = jsoniter.Config{
+	EscapeHTML:                    false,
+	ObjectFieldMustBeSimpleString: true,
+}.Froze()
+
 var WsConnUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true // Accepting all requests
@@ -68,9 +75,9 @@ func main() {
 				return
 			}
 
-			writeMsgBytes, err = jsoniter.ConfigFastest.Marshal(&msg)
+			writeMsgBytes, err = JsoniterConfig.Marshal(&msg)
 			if err != nil {
-				log.Warningf("Error in jsoniter.Marshal(writeMsgBytes): %s\n", err)
+				log.Warningf("Error in JsoniterConfig.Marshal(writeMsgBytes): %s\n", err)
 				return
 			}
 

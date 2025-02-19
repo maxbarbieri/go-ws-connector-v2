@@ -1,5 +1,14 @@
 package ws_connector
 
+import jsoniter "github.com/json-iterator/go"
+
+// JsoniterConfig is a global jsoniter config which is like jsoniter.ConfigFastest but marshals float64 values without
+// truncating them to 6 decimal digits.
+var JsoniterConfig = jsoniter.Config{
+	EscapeHTML:                    false,
+	ObjectFieldMustBeSimpleString: true,
+}.Froze()
+
 type requestInfo struct {
 	requestReader *RequestReader
 	responder     *wsResponder

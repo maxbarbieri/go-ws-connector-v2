@@ -50,7 +50,7 @@ func (r *wsResponder) SendResponse(data interface{}, err error) error {
 			defer r.wsConnector.ongoingResetLock.RUnlock()
 
 			//just send the message to the outgoing messages handler
-			r.wsConnector.outgoingWsMsgChan <- &wsSentMessage{
+			r.wsConnector.outgoingWsStructuredMsgChan <- &wsSentMessage{
 				Type:    response,
 				Id:      r.reqId,
 				Method:  r.method,

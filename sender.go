@@ -54,7 +54,7 @@ func (s *wsSender) Send(data interface{}, err error, last bool) error {
 		defer s.wsConnector.ongoingResetLock.RUnlock()
 
 		//just send the message to the outgoing messages handler
-		s.wsConnector.outgoingWsMsgChan <- &wsSentMessage{
+		s.wsConnector.outgoingWsStructuredMsgChan <- &wsSentMessage{
 			Type:    subscriptionData,
 			Id:      s.subId,
 			Method:  s.topic,

@@ -138,11 +138,12 @@ type Connector ServerConnector
 type websocketConnector struct {
 	logTag string
 
-	wsUrl              string                      //empty string for servers, otherwise it's a client
-	authTokenGenerator func() ([]string, []string) //always nil for servers, for clients it's nil if no authentication is required
-	wsConn             *websocket.Conn
-	incomingWsMsgChan  chan *wsReceivedMessage
-	outgoingWsMsgChan  chan *wsSentMessage
+	wsUrl                       string                      //empty string for servers, otherwise it's a client
+	authTokenGenerator          func() ([]string, []string) //always nil for servers, for clients it's nil if no authentication is required
+	wsConn                      *websocket.Conn
+	incomingWsMsgChan           chan *wsReceivedMessage
+	outgoingWsStructuredMsgChan chan *wsSentMessage
+	outgoingWsRawMsgChan        chan []byte
 
 	responseChanBufferSize            int
 	subscriptionRequestChanBufferSize int
@@ -195,7 +196,8 @@ func NewClientConnector(wsUrl string, requestHandlers []*RequestHandlerInfo, sub
 		incomingMsgChanBufferSize:              incomingMsgChanBufferSize,
 		outgoingMsgChanBufferSize:              outgoingMsgChanBufferSize,
 		incomingWsMsgChan:                      make(chan *wsReceivedMessage, incomingMsgChanBufferSize),
-		outgoingWsMsgChan:                      make(chan *wsSentMessage, outgoingMsgChanBufferSize),
+		outgoingWsStructuredMsgChan:            make(chan *wsSentMessage, outgoingMsgChanBufferSize),
+		outgoingWsRawMsgChan:                   make(chan []byte, outgoingMsgChanBufferSize),
 		mapSentRequestIdToResponseReader:       make(map[uint64]*ResponseReader),
 		mapSentSubIdToSubDataReader:            make(map[uint64]*SubscriptionDataReader),
 		mapReceivedRequestMethodToHandler:      make(map[string]RequestHandlerFunction),
@@ -240,7 +242,8 @@ func NewServerConnector(wsConn *websocket.Conn, requestHandlers []*RequestHandle
 		incomingMsgChanBufferSize:              incomingMsgChanBufferSize,
 		outgoingMsgChanBufferSize:              outgoingMsgChanBufferSize,
 		incomingWsMsgChan:                      make(chan *wsReceivedMessage, incomingMsgChanBufferSize),
-		outgoingWsMsgChan:                      make(chan *wsSentMessage, outgoingMsgChanBufferSize),
+		outgoingWsStructuredMsgChan:            make(chan *wsSentMessage, outgoingMsgChanBufferSize),
+		outgoingWsRawMsgChan:                   make(chan []byte, outgoingMsgChanBufferSize),
 		mapSentRequestIdToResponseReader:       make(map[uint64]*ResponseReader),
 		mapSentSubIdToSubDataReader:            make(map[uint64]*SubscriptionDataReader),
 		mapReceivedRequestMethodToHandler:      make(map[string]RequestHandlerFunction),
@@ -285,9 +288,10 @@ func (wsc *websocketConnector) openClientWsConnection() error {
 }
 
 func (wsc *websocketConnector) startGoroutines() {
-	go wsc.incomingWsMessageHandler()
-	go wsc.outgoingWsMessageWriter()
 	go wsc.incomingWsMessageReader()
+	go wsc.incomingWsMessageHandler()
+	go wsc.outgoingWsMsgMarshaler()
+	go wsc.outgoingWsMsgWriter()
 }
 
 func (wsc *websocketConnector) incomingWsMessageReader() {
@@ -303,7 +307,7 @@ func (wsc *websocketConnector) incomingWsMessageReader() {
 		if err != nil {
 			log.Warningf("[%s][WsReader] Error in wsc.wsConn.ReadMessage(): %s | Triggering reset procedure...\n", wsc.logTag, err)
 
-			//start the reset procedure (in a separate goroutine, because the reset procedure requires all three main goroutines of the connector to be closed)
+			//start the reset procedure (in a separate goroutine, because the reset procedure requires all four main goroutines of the connector to be closed)
 			go wsc.resetOnce.Do(wsc.reset)
 
 			//close the incoming messages channel, so the incomingWsMessageHandler goroutine will return too
@@ -360,7 +364,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 				log.Warningf("[%s][IncomingWsMsgHandler] Received request with same reqId of an active previous request: %+v\n", wsc.logTag, msg)
 				if msg.Id != 0 { //if a response is required
 					//send an error response
-					wsc.outgoingWsMsgChan <- &wsSentMessage{
+					wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 						Type:    response,
 						Id:      msg.Id,
 						Method:  msg.Method,
@@ -403,7 +407,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 					log.Warningf("[%s][IncomingWsMsgHandler] Received request for unknown method: %+v\n", wsc.logTag, msg)
 					if msg.Id != 0 { //if a response is required
 						//send an error response
-						wsc.outgoingWsMsgChan <- &wsSentMessage{
+						wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 							Type:    response,
 							Id:      msg.Id,
 							Method:  msg.Method,
@@ -462,7 +466,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 				} else { //if no handler exists for the method
 					log.Warningf("[%s][IncomingWsMsgHandler] Received subscription request for unknown method: %+v\n", wsc.logTag, msg)
 					//send an error response
-					wsc.outgoingWsMsgChan <- &wsSentMessage{
+					wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 						Type:    subscriptionData,
 						Id:      msg.Id,
 						Method:  msg.Method,
@@ -555,7 +559,7 @@ func (wsc *websocketConnector) incomingWsMessageHandler() {
 	}
 }
 
-func (wsc *websocketConnector) outgoingWsMessageWriter() {
+func (wsc *websocketConnector) outgoingWsMsgMarshaler() {
 	wsc.goroutinesActiveLock.RLock()
 	defer wsc.goroutinesActiveLock.RUnlock()
 
@@ -564,29 +568,50 @@ func (wsc *websocketConnector) outgoingWsMessageWriter() {
 	var err error
 
 	for {
-		//get next message that has to be sent to the peer
-		msg = <-wsc.outgoingWsMsgChan
+		//get next message to marshal
+		msg = <-wsc.outgoingWsStructuredMsgChan
 		if msg == nil { //if the reset procedure wants to kill this goroutine
-			//nil is sent on the outgoingWsMsgChan only by the reset procedure (this means it's already running, so we
-			//don't need to trigger it here, we just have to kill this goroutine)
-			//note that msg is the message read from the outgoingWsMsgChan, so it's the wrapped wsMessage
+			//nil is sent on the outgoingWsStructuredMsgChan only by the reset procedure (this means it's already running,
+			//so we don't need to trigger it here, we just have to close the outgoingWsRawMsgChan and kill this goroutine)
+			//note that msg is the message read from the outgoingWsStructuredMsgChan, so it's the wrapped wsMessage
 			//(with the "envelope", not just the payload, it must always be != nil for actual messages to send)
+			close(wsc.outgoingWsRawMsgChan)
 			return
 		}
 
-		msgBytes, err = jsoniter.ConfigFastest.Marshal(msg)
+		//marshal the message
+		msgBytes, err = JsoniterConfig.Marshal(msg)
 		if err != nil {
-			log.Warningf("[%s][OutgoingWsMsgHandler] Error in jsoniter.Marshal(msg): %s | skipping this message...\n", wsc.logTag, err)
+			log.Errorf("[%s][outgoingWsMsgMarshaler] Error in JsoniterConfig.Marshal(msg): %s | skipping this message...\n", wsc.logTag, err)
 			continue
 		}
 
-		log.Tracef("[%s][OutgoingWsMsgHandler] Sending ws msg: %s\n", wsc.logTag, msgBytes)
+		//send message to the writer
+		wsc.outgoingWsRawMsgChan <- msgBytes
+	}
+}
 
-		err = wsc.wsConn.WriteMessage(websocket.TextMessage, msgBytes)
+func (wsc *websocketConnector) outgoingWsMsgWriter() {
+	wsc.goroutinesActiveLock.RLock()
+	defer wsc.goroutinesActiveLock.RUnlock()
+
+	for {
+		//get next message that has to be sent to the peer
+		msgBytes, chanOpen := <-wsc.outgoingWsRawMsgChan
+		if !chanOpen { //if the reset procedure wants to kill this goroutine
+			//nil is sent on the outgoingWsRawMsgChan only by the outgoingWsMsgMarshaler when the reset procedure sends
+			//a nil on outgoingWsStructuredMsgChan (this means the reset procedure is already running, so we don't need
+			//to trigger it here, we just have to kill this goroutine)
+			return
+		}
+
+		log.Tracef("[%s][outgoingWsMsgWriter] Sending ws msg: %s\n", wsc.logTag, msgBytes)
+
+		err := wsc.wsConn.WriteMessage(websocket.TextMessage, msgBytes)
 		if err != nil {
-			log.Warningf("[%s][OutgoingWsMsgHandler] Error in wsc.wsConn.WriteMessage(websocket.TextMessage, msgBytes): %s | Triggering reset procedure...\n", wsc.logTag, err)
+			log.Warningf("[%s][outgoingWsMsgWriter] Error in wsc.wsConn.WriteMessage(websocket.TextMessage, msgBytes): %s | Triggering reset procedure...\n", wsc.logTag, err)
 
-			//start the reset procedure (in a separate goroutine, because the reset procedure requires all three main goroutines of the connector to be closed)
+			//start the reset procedure (in a separate goroutine, because the reset procedure requires all four main goroutines of the connector to be closed)
 			go wsc.resetOnce.Do(wsc.reset)
 
 			//kill this goroutine
@@ -656,7 +681,7 @@ func (wsc *websocketConnector) SendRequest(method string, data interface{}, requ
 			wsc.mapSentRequestIdToResponseReaderLock.Unlock()
 
 			//send message to the outgoing messages handler
-			wsc.outgoingWsMsgChan <- &wsSentMessage{
+			wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 				Type:   request,
 				Id:     reqId,
 				Method: method,
@@ -669,7 +694,7 @@ func (wsc *websocketConnector) SendRequest(method string, data interface{}, requ
 
 		} else { //fire and forget
 			//just send the message to the outgoing messages handler, without specifying an ID
-			wsc.outgoingWsMsgChan <- &wsSentMessage{
+			wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 				Type:   request,
 				Method: method,
 				Message: &Message[interface{}, error]{
@@ -730,7 +755,7 @@ func (wsc *websocketConnector) subscribe(topic string, restoreSubscriptionOnReco
 		wsc.mapSentSubIdToSubDataReaderLock.Unlock()
 
 		//send message to the outgoing messages handler
-		wsc.outgoingWsMsgChan <- &wsSentMessage{
+		wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 			Type:    subscriptionRequest,
 			Id:      subId,
 			Method:  topic,
@@ -764,7 +789,7 @@ func (wsc *websocketConnector) UpdateSubscription(subDataReader *SubscriptionDat
 			}
 
 			//send message to the outgoing messages handler
-			wsc.outgoingWsMsgChan <- &wsSentMessage{
+			wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 				Type:    subscriptionRequest,
 				Id:      subDataReader.subId,
 				Message: subReqMsg,
@@ -795,7 +820,7 @@ func (wsc *websocketConnector) Unsubscribe(subDataReader *SubscriptionDataReader
 
 			//send the unsubscribe request message to the outgoing messages handler and set the unsubscribing flag
 			subDataReader.unsubscribing = true
-			wsc.outgoingWsMsgChan <- &wsSentMessage{Type: unsubscriptionRequest, Id: subDataReader.subId}
+			wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{Type: unsubscriptionRequest, Id: subDataReader.subId}
 		}
 
 		return nil
@@ -818,7 +843,7 @@ func (wsc *websocketConnector) UnsubscribeAll() error {
 
 			//send the unsubscribe request message to the outgoing messages handler and set the unsubscribing flag
 			subDataReader.unsubscribing = true
-			wsc.outgoingWsMsgChan <- &wsSentMessage{Type: unsubscriptionRequest, Id: subId}
+			wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{Type: unsubscriptionRequest, Id: subId}
 		}
 		wsc.mapSentSubIdToSubDataReaderLock.Unlock()
 
@@ -950,19 +975,24 @@ func (wsc *websocketConnector) reset() {
 	//before returning, the incomingWsMessageReader goroutine will close incomingWsMsgChan, which will kill the incomingWsMessageHandler
 	//goroutine too, so there's no need to do that here
 
-	//since we don't know whether there is anything on the outgoingWsMsgChan that the outgoingWsMessageWriter can read,
-	//we'll just send a nil on it. If the outgoingWsMessageWriter is waiting to read from the channel, it will detect
-	//the nil and return. If it's handling a previous outgoing message it will detect an error on the WriteMessage, since
-	//the connection is now closed. Either way it will close itself.
-	wsc.outgoingWsMsgChan <- nil
+	//since we don't know whether there is anything on the outgoingWsStructuredMsgChan that the outgoingWsMsgMarshaler
+	//can read, we'll just send a nil on it. When the outgoingWsMsgMarshaler reads from the channel, it will detect the
+	//nil, close the outgoingWsRawMsgChan and return. This is the only way the outgoingWsMsgMarshaler can close itself,
+	//so we know for sure that it will close the outgoingWsRawMsgChan.
+	//If the outgoingWsMsgWriter is waiting to read from outgoingWsRawMsgChan, it will detect that it has been closed
+	//and return. If it's writing a previous outgoing message it will detect an error on the WriteMessage, since the
+	//connection is now closed. Either way it will close itself too.
+	wsc.outgoingWsStructuredMsgChan <- nil
 
-	//wait for the three goroutines (incomingWsMessageReader, incomingWsMessageHandler and outgoingWsMessageWriter) to be closed
+	//wait for the four goroutines (incomingWsMessageReader, incomingWsMessageHandler, outgoingWsMsgMarshaler, outgoingWsMsgWriter) to be closed
 	//(once the lock has been acquired, it means that all goroutines are closed, so we can unlock it immediately)
 	wsc.goroutinesActiveLock.Lock()
 	wsc.goroutinesActiveLock.Unlock()
 
-	//at this point we are sure that no one will send anything on outgoingWsMsgChan, so we can close it
-	close(wsc.outgoingWsMsgChan)
+	//at this point we are sure that no one will send anything on outgoingWsStructuredMsgChan, so we can close it
+	close(wsc.outgoingWsStructuredMsgChan)
+
+	//note that we don't need to close outgoingWsRawMsgChan because we are sure it will be closed by the outgoingWsMsgMarshaler.
 
 	wsc.closeSendersRespondersAndReaders()
 
@@ -978,7 +1008,8 @@ func (wsc *websocketConnector) reset() {
 
 			//remake the internal channels, to discard all previous unprocessed messages, if any
 			wsc.incomingWsMsgChan = make(chan *wsReceivedMessage, wsc.incomingMsgChanBufferSize)
-			wsc.outgoingWsMsgChan = make(chan *wsSentMessage, wsc.outgoingMsgChanBufferSize)
+			wsc.outgoingWsStructuredMsgChan = make(chan *wsSentMessage, wsc.outgoingMsgChanBufferSize)
+			wsc.outgoingWsRawMsgChan = make(chan []byte, wsc.outgoingMsgChanBufferSize)
 
 			//open ws connection
 			err := wsc.openClientWsConnection()
@@ -1007,7 +1038,7 @@ func (wsc *websocketConnector) reset() {
 				if !subDataReader.unsubscribing { //only if not unsubscribing
 					//send subscription request message to the outgoing messages handler, with the same id, method and data as
 					//the latest subscription update of original subscription
-					wsc.outgoingWsMsgChan <- &wsSentMessage{
+					wsc.outgoingWsStructuredMsgChan <- &wsSentMessage{
 						Type:    subscriptionRequest,
 						Id:      subId,
 						Method:  subDataReader.topic,
